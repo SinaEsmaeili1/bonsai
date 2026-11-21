@@ -14,3 +14,5 @@
 /web/*
 !/web/agent.py
 !/web/browser.py
+# The README's screenshots and videos.
+!/media/

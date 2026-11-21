@@ -1,6 +1,8 @@
 # Bonsai: a 27B model on my own GPU, with a web and browser agent
 
-I run PrismML's **Ternary Bonsai 2 27B** on my own PC. Its weights are ternary, about 2 bits each, so a 27-billion-parameter model comes out at about 7 GB and fits on a consumer graphics card. On top of it I built a small terminal agent. It can search the web, read pages, and drive my real Firefox window, and it asks me before it does anything that changes a page.
+I run PrismML's **Ternary Bonsai 2 27B** on my own PC. Its weights are ternary, about 2 bits each, so a 27 billion parameter model comes out at about 7 GB and fits on a consumer graphics card. On top of it I built a small terminal agent. It can search the web, read pages, and drive my real Firefox window, and it asks me before it does anything that changes a page.
+
+![bonsai-web asks before every search and page, then answers with its sources](media/web-search.gif)
 
 This repo is just my scripts. The model ([PrismML's GGUF on Hugging Face](https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf)) and PrismML's build of llama.cpp aren't included (see [What you need](#what-you-need)).
 
@@ -120,4 +122,4 @@ A WebDriver BiDi session made with `session.new` outlives its client and blocks 
 
 ## Credit
 
-The model and the llama.cpp fork are PrismML's, and llama.cpp is ggml-org's. I designed and built the launchers and the agent, AI-assisted. MIT licensed (see [LICENSE](LICENSE)).
+The model and the llama.cpp fork are PrismML's, and llama.cpp is ggml-org's. I designed and built the launchers and the agent, with AI assistance. MIT licensed (see [LICENSE](LICENSE)).
