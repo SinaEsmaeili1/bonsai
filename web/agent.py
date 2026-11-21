@@ -4,8 +4,10 @@
 # ///
 """Terminal chat where Bonsai can search the web, read pages and drive the user's Firefox via tool calls."""
 import json
+import os
 import re
 import sys
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -182,9 +184,18 @@ def drop_old_snapshots(messages):
             m["content"] = m["content"].split("\n", 1)[0] + "\n[older page snapshot removed]"
 
 
+def auth_headers():
+    """The server's key, read from the key file at each request; no file, no header."""
+    try:
+        key = (Path(os.environ.get("BONSAI_STATE") or Path.home() / ".config/bonsai") / "api-key").read_text().strip()
+    except OSError:
+        return {}
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
+
 def chat(messages, tools):
     body = {"messages": messages, "tools": tools} if tools else {"messages": messages}
-    r = httpx.post(API, json=body, timeout=600)
+    r = httpx.post(API, json=body, headers=auth_headers(), timeout=600)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]
 

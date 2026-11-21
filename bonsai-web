@@ -11,6 +11,7 @@ if [[ -z "$MODEL" ]]; then
 fi
 export LD_LIBRARY_PATH="$DIR/llama-prism/cudalibs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 PORT=8089
+STATE="${BONSAI_STATE:-$HOME/.config/bonsai}"
 LOG="${XDG_CACHE_HOME:-$HOME/.cache}/bonsai-web-server.log"
 
 if curl -sf "http://127.0.0.1:$PORT/health" >/dev/null; then
@@ -20,10 +21,28 @@ if curl -sf "http://127.0.0.1:$PORT/health" >/dev/null; then
   exec uv run --quiet "$DIR/web/agent.py" "http://127.0.0.1:$PORT/v1/chat/completions"
 fi
 
+# Makes $STATE/api-key (48 letters and digits, mode 600) if it is missing or
+# holds no key: llama-server skips blank and # lines, and with no key it asks
+# for none. A key that is there is kept. The key is never printed.
+ensure_key() {
+  grep -q -v -E '^[[:space:]]*(#|$)' "$STATE/api-key" 2>/dev/null && return 0
+  local tmp
+  (
+    umask 077
+    mkdir -p "$STATE" || exit 1
+    tmp=$(mktemp "$STATE/.api-key.XXXXXX") || exit 1
+    tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48 > "$tmp"
+    [[ $(wc -c < "$tmp") -eq 48 ]] || { rm -f "$tmp"; exit 1; }
+    mv -f "$tmp" "$STATE/api-key"
+  ) || { echo "Could not make the Bonsai key file in $STATE." >&2; exit 1; }
+}
+
+ensure_key
 "$BIN/llama-server" \
   -m "$MODEL" \
   -ngl 99 -fa on -ub 256 -c 131072 -ctk q8_0 -ctv q8_0 -nkvo \
   -np 1 -rea off --jinja --host 127.0.0.1 --port $PORT \
+  --api-key-file "$STATE/api-key" --cors-origins localhost \
   "$@" >"$LOG" 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null' EXIT

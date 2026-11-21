@@ -96,4 +96,26 @@ check "status shows when it is down" 'echo "$out" | grep -q -i "down"'
 setup up; serve stop >/dev/null 2>&1
 check "stop stops the unit" 'grep -q "systemctl --user stop bonsai-serve" "$T/calls"'
 
+# Fix A (2026-11-21): every start has the key file and the localhost-only CORS flags.
+for lvl in low medium high max; do
+  setup up; serve "$lvl" >/dev/null 2>&1
+  check "$lvl: starts with the key file" 'started | grep -q -- "--api-key-file $T/state/api-key"'
+  check "$lvl: answers browser pages from localhost only" 'started | grep -q -- "--cors-origins localhost"'
+done
+setup gpu-dies; serve max >/dev/null 2>&1
+check "max RAM fallback: has the key file and the CORS flag too" '[ "$(started | wc -l)" -eq 2 ] && started | tail -1 | grep -q -- "--api-key-file $T/state/api-key" && started | tail -1 | grep -q -- "--cors-origins localhost"'
+
+setup up; serve medium >/dev/null 2>&1
+check "a missing key file is made: 48 letters and digits" '[ "$(wc -c < "$T/state/api-key" | tr -d " ")" -ge 48 ] && head -n 1 "$T/state/api-key" | grep -Eq "^[A-Za-z0-9]{48}$"'
+check "the key file is mode 600" '[ "$(stat -c %a "$T/state/api-key")" = 600 ]'
+setup up; echo "my-own-key" > "$T/state/api-key"; serve medium >/dev/null 2>&1
+check "a key that is there is kept" '[ "$(cat "$T/state/api-key")" = "my-own-key" ]'
+setup up; : > "$T/state/api-key"; serve medium >/dev/null 2>&1
+check "an empty key file gets a new key" 'head -n 1 "$T/state/api-key" | grep -Eq "^[A-Za-z0-9]{48}$"'
+# llama-server reads no key from blank or # lines, and then asks for none, so such a file counts as missing (lead's review, 2026-11-21).
+setup up; printf '\n  \n# a note\n' > "$T/state/api-key"; serve medium >/dev/null 2>&1
+check "a key file with only blank lines and comments gets a new key" 'head -n 1 "$T/state/api-key" | grep -Eq "^[A-Za-z0-9]{48}$"'
+setup up; out=$(serve medium 2>&1); k=$(cat "$T/state/api-key" 2>/dev/null)
+check "the key is never printed or on a command line" '[ -n "$k" ] && ! echo "$out" | grep -qF -- "$k" && ! grep -qF -- "$k" "$T/calls"'
+
 exit $fail

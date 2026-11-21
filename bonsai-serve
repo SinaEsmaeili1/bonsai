@@ -41,6 +41,22 @@ usage() {
 
 healthy() { curl -sf -m 2 "http://127.0.0.1:$PORT/health" >/dev/null; }
 
+# Makes $STATE/api-key (48 letters and digits, mode 600) if it is missing or
+# holds no key: llama-server skips blank and # lines, and with no key it asks
+# for none. A key that is there is kept. The key is never printed.
+ensure_key() {
+  grep -q -v -E '^[[:space:]]*(#|$)' "$STATE/api-key" 2>/dev/null && return 0
+  local tmp
+  (
+    umask 077
+    mkdir -p "$STATE" || exit 1
+    tmp=$(mktemp "$STATE/.api-key.XXXXXX") || exit 1
+    tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48 > "$tmp"
+    [[ $(wc -c < "$tmp") -eq 48 ]] || { rm -f "$tmp"; exit 1; }
+    mv -f "$tmp" "$STATE/api-key"
+  ) || { echo "Could not make the Bonsai key file in $STATE." >&2; exit 1; }
+}
+
 start() {  # extra llama-server flags
   systemctl --user stop "$UNIT" 2>/dev/null
   local model="${BONSAI_MODEL:-$(ls "$DIR"/*.gguf 2>/dev/null | head -n 1)}"
@@ -48,10 +64,12 @@ start() {  # extra llama-server flags
     echo "No model found. Put the Bonsai GGUF next to this script, or set BONSAI_MODEL." >&2
     exit 1
   fi
+  ensure_key
   systemd-run --user --unit="$UNIT" --collect --quiet \
     --setenv=LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
     $WRAP "$BIN/llama-server" -m "$model" -ngl 99 -fa on -ub 256 "$@" \
-    -np 1 --jinja --host 127.0.0.1 --port "$PORT"
+    -np 1 --jinja --host 127.0.0.1 --port "$PORT" \
+    --api-key-file "$STATE/api-key" --cors-origins localhost
 }
 
 # 0: up. 1: still not up after BONSAI_WAIT seconds. 2: the server died.

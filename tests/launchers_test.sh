@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Tests the model choice in the Bonsai launchers, with fake llama binaries.
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT; SRC="$(cd "$(dirname "$0")/.." && pwd)"; fail=0
+# Keeps every test away from the real ~/.config/bonsai.
+export BONSAI_STATE="$T/state"
 setup() {
   rm -rf "$T"; mkdir -p "$T/kit/llama-prism/llama-prism-b10809-b3ebc47" "$T/cache"
   cp "$SRC/bonsai" "$SRC/bonsai-web" "$T/kit/"
@@ -25,6 +27,16 @@ check "bonsai stops with a message when there is no model" '[ $code -ne 0 ] && [
 setup; touch "$T/kit/model-x.gguf"; mkdir -p "$T/downbin"; printf '#!/usr/bin/env bash\nexit 7\n' > "$T/downbin/curl"; chmod +x "$T/downbin/curl"
 PATH="$T/downbin:$PATH" XDG_CACHE_HOME="$T/cache" timeout 20 "$T/kit/bonsai-web" >/dev/null 2>&1
 check "bonsai-web picks the GGUF next to it" 'grep -q -- "-m $T/kit/model-x.gguf" "$T/args-llama-server" 2>/dev/null'
+# 4b. Fix A (2026-11-21): its own server gets the key file and localhost-only CORS, and the key is made
+setup; touch "$T/kit/model-x.gguf"; mkdir -p "$T/downbin"; printf '#!/usr/bin/env bash\nexit 7\n' > "$T/downbin/curl"; chmod +x "$T/downbin/curl"
+PATH="$T/downbin:$PATH" XDG_CACHE_HOME="$T/cache" timeout 20 "$T/kit/bonsai-web" >/dev/null 2>&1
+check "bonsai-web: its own server gets --api-key-file" 'grep -q -- "--api-key-file $T/state/api-key" "$T/args-llama-server" 2>/dev/null'
+check "bonsai-web: its own server gets --cors-origins localhost" 'grep -q -- "--cors-origins localhost" "$T/args-llama-server" 2>/dev/null'
+check "bonsai-web: makes the key file (48 letters and digits, mode 600)" 'head -n 1 "$T/state/api-key" 2>/dev/null | grep -Eq "^[A-Za-z0-9]{48}$" && [ "$(stat -c %a "$T/state/api-key")" = 600 ]'
+# A key file with only blank or # lines holds no key for llama-server, so it is replaced (lead's review, 2026-11-21).
+setup; touch "$T/kit/model-x.gguf"; mkdir -p "$T/downbin" "$T/state"; printf '#!/usr/bin/env bash\nexit 7\n' > "$T/downbin/curl"; chmod +x "$T/downbin/curl"; printf '\n# a note\n' > "$T/state/api-key"
+PATH="$T/downbin:$PATH" XDG_CACHE_HOME="$T/cache" timeout 20 "$T/kit/bonsai-web" >/dev/null 2>&1
+check "bonsai-web: a key file without a key gets a new one" 'head -n 1 "$T/state/api-key" 2>/dev/null | grep -Eq "^[A-Za-z0-9]{48}$"'
 # 6. bonsai-web reuses a Bonsai that's already up (bonsai-serve), instead of refusing (added 2026-11-21)
 setup; touch "$T/kit/model-x.gguf"; mkdir -p "$T/fakebin"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$T/fakebin/curl"
