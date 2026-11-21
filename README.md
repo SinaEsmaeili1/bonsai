@@ -2,7 +2,7 @@
 
 I run PrismML's **Ternary Bonsai 2 27B** on my own PC. Its weights are ternary, about 2 bits each, so a 27-billion-parameter model comes out at about 7 GB and fits on a consumer graphics card. On top of it I built a small terminal agent. It can search the web, read pages, and drive my real Firefox window, and it asks me before it does anything that changes a page.
 
-This repo is just my scripts. The model and PrismML's build of llama.cpp aren't included (see [What you need](#what-you-need)).
+This repo is just my scripts. The model ([PrismML's GGUF on Hugging Face](https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf)) and PrismML's build of llama.cpp aren't included (see [What you need](#what-you-need)).
 
 **Jump to:** [Quick start](#quick-start) · [How it works](#how-it-works) · [What's in here](#whats-in-here) · [What you need](#what-you-need) · [Things I learned](#things-i-learned) · [Credit](#credit)
 
@@ -82,7 +82,7 @@ flowchart LR
 
 - An NVIDIA GPU. I run it on 8 to 12 GB cards.
 - PrismML's llama.cpp fork, built with CUDA. The scripts expect it in `llama-prism/` next to them.
-- The Ternary Bonsai 2 27B GGUF from PrismML, next to the scripts (or set `BONSAI_MODEL`).
+- The [Ternary Bonsai 2 27B GGUF](https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf) from PrismML on Hugging Face, next to the scripts (or set `BONSAI_MODEL`).
 - [uv](https://docs.astral.sh/uv/) to run the agent (it installs its own Python packages), and Firefox.
 
 <details>
