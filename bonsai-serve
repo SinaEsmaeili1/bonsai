@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# Serve Bonsai on localhost:8089 at an effort level, for editors and agents
+# (my Neovim agent, bonsai-web). More effort means more context:
+#   low     16K context, cache q8_0, on the GPU
+#   medium  32K context, cache q8_0, on the GPU   (the default)
+#   high    64K context, cache q4_0, on the GPU
+#   max    180K context, cache q4_0, on the GPU if it fits, otherwise in RAM
+# Thinking is switched per request by the client, so it isn't set here.
+#
+#   bonsai-serve <low|medium|high|max>   start, or restart at another level
+#   bonsai-serve status                  show the level and whether it's up
+#   bonsai-serve stop                    stop it
+#
+# It runs as the systemd user unit "bonsai-serve". Settings, all optional:
+#   BONSAI_MODEL   the .gguf to load (default: the one next to this script)
+#   BONSAI_WRAP    a command to run the server through (default: my
+#                  ~/dark-pc/background.sh if it exists, which gives the CPU
+#                  to more important jobs first)
+#   BONSAI_STATE   where the level is saved (default: ~/.config/bonsai)
+#   BONSAI_WAIT    seconds to wait for the model to load (default: 240)
+DIR="$(dirname "$(readlink -f "$0")")"
+BIN="$DIR/llama-prism/llama-prism-b10809-b3ebc47"
+export LD_LIBRARY_PATH="$DIR/llama-prism/cudalibs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+PORT=8089
+UNIT=bonsai-serve
+STATE="${BONSAI_STATE:-$HOME/.config/bonsai}"
+WAIT="${BONSAI_WAIT:-240}"
+MEMINFO="${BONSAI_MEMINFO:-/proc/meminfo}"
+if [[ -v BONSAI_WRAP ]]; then WRAP="$BONSAI_WRAP"
+elif [[ -x "$HOME/dark-pc/background.sh" ]]; then WRAP="$HOME/dark-pc/background.sh"
+else WRAP=""; fi
+
+# The RAM fallback for max needs about 4 GB, and must leave 7 GB free.
+RAM_NEEDED_MB=4096
+RAM_FLOOR_MB=7168
+
+usage() {
+  echo "usage: bonsai-serve <low|medium|high|max> | status | stop" >&2
+  exit 2
+}
+
+healthy() { curl -sf -m 2 "http://127.0.0.1:$PORT/health" >/dev/null; }
+
+start() {  # extra llama-server flags
+  systemctl --user stop "$UNIT" 2>/dev/null
+  local model="${BONSAI_MODEL:-$(ls "$DIR"/*.gguf 2>/dev/null | head -n 1)}"
+  if [[ -z "$model" ]]; then
+    echo "No model found. Put the Bonsai GGUF next to this script, or set BONSAI_MODEL." >&2
+    exit 1
+  fi
+  systemd-run --user --unit="$UNIT" --collect --quiet \
+    --setenv=LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+    $WRAP "$BIN/llama-server" -m "$model" -ngl 99 -fa on -ub 256 "$@" \
+    -np 1 --jinja --host 127.0.0.1 --port "$PORT"
+}
+
+# 0: up. 1: still not up after BONSAI_WAIT seconds. 2: the server died.
+wait_ready() {
+  for ((i = 0; i < WAIT; i++)); do
+    healthy && return 0
+    systemctl --user is-active --quiet "$UNIT" || { (( i > 0 )) && return 2; }
+    sleep 1
+  done
+  return 1
+}
+
+serve() {  # level, then its flags
+  local level=$1; shift
+  echo "Loading Bonsai at effort $level..."
+  start "$@"
+  mkdir -p "$STATE"
+  echo "$level" > "$STATE/effort"
+  wait_ready
+}
+
+available_mb() { awk '/^MemAvailable:/ { print int($2 / 1024) }' "$MEMINFO"; }
+
+case "${1:-}" in
+  low)    serve low    -c 16384 -ctk q8_0 -ctv q8_0 ;;
+  medium) serve medium -c 32768 -ctk q8_0 -ctv q8_0 ;;
+  high)   serve high   -c 65536 -ctk q4_0 -ctv q4_0 ;;
+  max)
+    serve max -c 184320 -ctk q4_0 -ctv q4_0
+    result=$?
+    if (( result == 2 )); then
+      # Too big for the GPU right now (other programs use it too): keep the
+      # cache in RAM instead, if that leaves enough memory free.
+      if (( $(available_mb) - RAM_NEEDED_MB < RAM_FLOOR_MB )); then
+        echo "Not enough memory for max with the cache in RAM (needs about 4 GB and must leave 7 GB free). Try high." >&2
+        exit 3
+      fi
+      echo "The GPU is too full for max; using RAM for the cache (slower)."
+      serve max -c 184320 -ctk q4_0 -ctv q4_0 -nkvo
+      result=$?
+    fi
+    (( result == 0 )) || { echo "Bonsai is not ready (see: journalctl --user -u $UNIT)." >&2; exit 1; }
+    echo "Bonsai is ready at effort max on localhost:$PORT."
+    exit 0
+    ;;
+  status)
+    level=$(cat "$STATE/effort" 2>/dev/null || echo "none")
+    if healthy; then echo "Bonsai is up at effort $level on localhost:$PORT."
+    else echo "Bonsai is down (last effort: $level)."; fi
+    exit 0
+    ;;
+  stop)
+    systemctl --user stop "$UNIT" 2>/dev/null
+    echo "Bonsai stopped."
+    exit 0
+    ;;
+  *) usage ;;
+esac
+
+# low, medium and high end here.
+result=$?
+if (( result != 0 )); then
+  echo "Bonsai is not ready (see: journalctl --user -u $UNIT)." >&2
+  exit 1
+fi
+echo "Bonsai is ready at effort $1 on localhost:$PORT."

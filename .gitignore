@@ -8,6 +8,8 @@
 !/bonsai
 !/bonsai-web
 !/firefox-bonsai
+!/bonsai-serve
+!/tests/
 !/web/
 /web/*
 !/web/agent.py

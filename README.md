@@ -73,6 +73,8 @@ flowchart LR
 | `bonsai` | Chat with the model in the terminal. Everything stays on the GPU with a 16K context. Called as `bonsai-long`, it gives a 128K context with the KV cache in system RAM. |
 | `bonsai-web` | Starts `llama-server` with tool calling (`--jinja`) on `127.0.0.1:8089`, waits until the model is loaded, then opens the agent. |
 | `firefox-bonsai` | Starts Firefox with remote control on, reachable only from this machine. |
+| `bonsai-serve` | Serves Bonsai on `localhost:8089` for editors and agents, at an effort level: `low` (16K context), `medium` (32K), `high` (64K), `max` (180K, on the GPU if it fits, otherwise with the cache in RAM). `bonsai-serve status` and `bonsai-serve stop` too. `bonsai-web` uses it if it's already running. |
+| `tests/` | Shell tests for the launchers and `bonsai-serve`, run with fake llama binaries so nothing real starts. |
 | `web/agent.py` | The agent loop: a web search (DuckDuckGo), fetching pages, and the browser tools. |
 | `web/browser.py` | Drives Firefox over Marionette and WebDriver BiDi: reads the page as text with numbered elements, then clicks and types with real input events. |
 

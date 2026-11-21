@@ -14,8 +14,10 @@ PORT=8089
 LOG="${XDG_CACHE_HOME:-$HOME/.cache}/bonsai-web-server.log"
 
 if curl -sf "http://127.0.0.1:$PORT/health" >/dev/null; then
-  echo "bonsai-web is already running in another terminal. Use that one, or /exit it first."
-  exit 1
+  # Bonsai is already up (bonsai-serve, or another bonsai-web): share it, and
+  # leave it running on exit. Only one copy of the model fits on the GPU.
+  echo "Using the Bonsai that's already running on localhost:$PORT."
+  exec uv run --quiet "$DIR/web/agent.py" "http://127.0.0.1:$PORT/v1/chat/completions"
 fi
 
 "$BIN/llama-server" \
