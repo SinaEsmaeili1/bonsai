@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Interactive chat with Ternary Bonsai 2 27B (PrismML llama.cpp fork, CUDA).
+#   bonsai       16K context, everything on GPU (~35 tok/s)
+#   bonsai-long  128K context, KV cache in system RAM (~15 tok/s, slower as it fills)
+# Extra args are passed to llama-cli and override the defaults, e.g. `bonsai-long -c 262144`.
+DIR="$(dirname "$(readlink -f "$0")")"
+BIN="$DIR/llama-prism/llama-prism-b10809-b3ebc47"
+# The model: BONSAI_MODEL if set, otherwise the one .gguf file next to this script.
+MODEL="${BONSAI_MODEL:-$(ls "$DIR"/*.gguf 2>/dev/null | head -n 1)}"
+if [[ -z "$MODEL" ]]; then
+  echo "No model found. Put the Bonsai GGUF next to this script, or set BONSAI_MODEL to its path." >&2
+  exit 1
+fi
+export LD_LIBRARY_PATH="$DIR/llama-prism/cudalibs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+if [[ "$(basename "$0")" == bonsai-long ]]; then
+  # Weights stay on GPU; -nkvo puts the KV cache in RAM (~34 KB/token at q8_0).
+  CTX=(-c 131072 -ctk q8_0 -ctv q8_0 -nkvo)
+else
+  # Measured limit in 8 GB VRAM: 16K needs q4_0 KV; q8_0 only fits 8K.
+  CTX=(-c 16384 -ctk q4_0 -ctv q4_0)
+fi
+
+exec "$BIN/llama-cli" \
+  -m "$MODEL" \
+  -ngl 99 -fa on -ub 256 "${CTX[@]}" \
+  -rea off -sys "Be concise. When explaining how to do something, give short numbered steps." \
+  "$@"

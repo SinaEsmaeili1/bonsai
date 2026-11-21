@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Bonsai with web search + page fetching (tool calling via llama-server).
+# Extra args go to llama-server, e.g. `bonsai-web -c 262144`. KV cache lives in system RAM (long context).
+DIR="$(dirname "$(readlink -f "$0")")"
+BIN="$DIR/llama-prism/llama-prism-b10809-b3ebc47"
+# The model: BONSAI_MODEL if set, otherwise the one .gguf file next to this script.
+MODEL="${BONSAI_MODEL:-$(ls "$DIR"/*.gguf 2>/dev/null | head -n 1)}"
+if [[ -z "$MODEL" ]]; then
+  echo "No model found. Put the Bonsai GGUF next to this script, or set BONSAI_MODEL to its path." >&2
+  exit 1
+fi
+export LD_LIBRARY_PATH="$DIR/llama-prism/cudalibs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+PORT=8089
+LOG="${XDG_CACHE_HOME:-$HOME/.cache}/bonsai-web-server.log"
+
+if curl -sf "http://127.0.0.1:$PORT/health" >/dev/null; then
+  echo "bonsai-web is already running in another terminal. Use that one, or /exit it first."
+  exit 1
+fi
+
+"$BIN/llama-server" \
+  -m "$MODEL" \
+  -ngl 99 -fa on -ub 256 -c 131072 -ctk q8_0 -ctv q8_0 -nkvo \
+  -np 1 -rea off --jinja --host 127.0.0.1 --port $PORT \
+  "$@" >"$LOG" 2>&1 &
+SERVER=$!
+trap 'kill $SERVER 2>/dev/null' EXIT
+
+echo -n "Loading model..."
+until curl -sf "http://127.0.0.1:$PORT/health" >/dev/null; do
+  if ! kill -0 $SERVER 2>/dev/null; then
+    echo " failed. See $LOG (is another bonsai chat using the GPU?)"
+    exit 1
+  fi
+  sleep 1
+done
+echo " ready."
+
+uv run --quiet "$DIR/web/agent.py" "http://127.0.0.1:$PORT/v1/chat/completions"

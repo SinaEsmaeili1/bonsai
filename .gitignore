@@ -1,0 +1,14 @@
+# Only my scripts are published. The model file (GGUF, about 7 GB) and
+# PrismML's llama.cpp build (llama-prism/) stay on my machine: they're
+# PrismML's, and far too big for git anyway.
+/*
+!/.gitignore
+!/README.md
+!/LICENSE
+!/bonsai
+!/bonsai-web
+!/firefox-bonsai
+!/web/
+/web/*
+!/web/agent.py
+!/web/browser.py

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Start Firefox with remote control on, so `bonsai-web` can read and drive it.
+# Only reachable from this machine (127.0.0.1). The address bar turns striped with a
+# robot icon while it is on; start Firefox normally to turn it off.
+if curl -s -o /dev/null --max-time 1 http://127.0.0.1:9222/; then
+  exec firefox "$@"  # already on: just open a window/URL in it
+fi
+if pgrep -x firefox >/dev/null || pgrep -f '^/usr/lib/firefox/firefox' >/dev/null; then
+  echo "Firefox is running without remote control. Quit it (Ctrl+Q), then run firefox-bonsai again."
+  echo "Your tabs come back if session restore is on (Settings > General > Open previous windows and tabs)."
+  exit 1
+fi
+setsid -f firefox --marionette --remote-debugging-port 9222 "$@" >/dev/null 2>&1
