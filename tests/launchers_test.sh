@@ -19,8 +19,11 @@ check "bonsai uses BONSAI_MODEL when set" 'grep -q -- "-m /elsewhere/other.gguf"
 # 3. no model: clear message, llama-cli never runs
 setup; out=$("$T/kit/bonsai" 2>&1); code=$?
 check "bonsai stops with a message when there is no model" '[ $code -ne 0 ] && [ ! -e "$T/args-llama-cli" ] && echo "$out" | grep -qi "BONSAI_MODEL"'
-# 4. bonsai-web passes the same model to llama-server (the fake exits at once)
-setup; touch "$T/kit/model-x.gguf"; XDG_CACHE_HOME="$T/cache" timeout 20 "$T/kit/bonsai-web" >/dev/null 2>&1
+# 4. bonsai-web passes the same model to llama-server (the fake exits at once).
+# A fake curl says no server is up, so a real Bonsai on 8089 can't change the
+# result (fixed 2026-11-21: the test failed while a real one was running).
+setup; touch "$T/kit/model-x.gguf"; mkdir -p "$T/downbin"; printf '#!/usr/bin/env bash\nexit 7\n' > "$T/downbin/curl"; chmod +x "$T/downbin/curl"
+PATH="$T/downbin:$PATH" XDG_CACHE_HOME="$T/cache" timeout 20 "$T/kit/bonsai-web" >/dev/null 2>&1
 check "bonsai-web picks the GGUF next to it" 'grep -q -- "-m $T/kit/model-x.gguf" "$T/args-llama-server" 2>/dev/null'
 # 6. bonsai-web reuses a Bonsai that's already up (bonsai-serve), instead of refusing (added 2026-11-21)
 setup; touch "$T/kit/model-x.gguf"; mkdir -p "$T/fakebin"
